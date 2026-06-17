@@ -201,6 +201,7 @@ const MODES=[
   {id:'writing', label:'✍️ 写作批改'},
   {id:'translation', label:'🔁 中意翻译'},
   {id:'idioms', label:'💬 习语谚语'},
+  {id:'speaking', label:'🗣️ 口语练习'},
   {id:'review', label:'📅 每日复习'},
   {id:'realestate', label:'🏠 房产中介考试'}
 ];
@@ -274,6 +275,7 @@ function buildSystem(){
   else if(S.mode==='writing') modeInstr='MODE: Writing correction. Propose ONE concrete writing task in Italian at the student\'s level (e.g. an email, a description, an opinion paragraph). When the student submits their text, correct it thoroughly like a C1 examiner: fix grammar, lexis and register; show a clearly IMPROVED version; explain the key corrections (Italian + Chinese gloss); give 1–2 tips to level up. Then offer another prompt or a harder one. Be encouraging.';
   else if(S.mode==='translation') modeInstr='MODE: Chinese→Italian translation. Each turn give the student ONE Chinese sentence to translate into Italian (at their level, i+1; sometimes tie it to daily life or real-estate). When they answer, evaluate, give the best natural Italian translation, explain key choices and errors (Chinese gloss), and note an alternative phrasing. Then a new sentence, gradually harder.';
   else if(S.mode==='idioms') modeInstr='MODE: Idioms & expressions (modi di dire). Teach ONE common Italian idiom, proverb or colloquial expression per turn: its meaning, literal vs figurative sense, when to use it, an example sentence, and the Chinese equivalent. Then ask the student to make their own sentence with it and correct kindly. Put the idiom in the vocab field. Keep it lively and memorable.';
+  else if(S.mode==='speaking') modeInstr='MODE: Speaking practice (oral fluency). Goal: get the student TALKING ALOUD as much as possible. Give a simple, engaging spoken prompt or question and invite them to answer by VOICE (mic or phone keyboard dictation). Keep YOUR turns short and natural. After they answer: put pronunciation/fluency-relevant fixes in the corrections array; then give a natural, idiomatic MODEL way to say it (one short line) and warmly invite them to repeat it ALOUD (shadowing). Teach common spoken expressions and fillers (allora, cioè, diciamo, insomma…) and natural rhythm. Gradually push them to speak a little longer and more fluently. Be very encouraging so they feel safe speaking and making mistakes.';
   else if(S.mode==='review') modeInstr='MODE: Spaced-repetition review (flashcards in conversation). Quiz the student on THEIR saved words and weak points (listed above as due-for-review and weak skills). For each item, vary the format: ask them to recall the meaning, translate it, or use it in a sentence. Correct kindly with a Chinese gloss, and move briskly to the next, like flashcards. If nothing is due, review recently learned vocabulary and past error points. Celebrate progress and keep it short and motivating.';
   else if(S.mode==='realestate'&&S.reMode==='written') modeInstr=`MODE: WRITTEN-EXAM MCQ GRADING — official multiple-choice questions of the Italian real-estate agent written exam (Camera di Commercio, Diritto Civile).
 The app sends you a question, its 3 options (numbered 1,2,3), and the student's chosen number. Your reply MUST:
@@ -396,7 +398,7 @@ function addAI(reply,meta){
   b.querySelectorAll('w').forEach(w=>w.onclick=e=>defineWord(w.textContent,e));
   if(S.mode==='listening'){b.classList.add('masked');b.title='点击显示原文';b.addEventListener('click',()=>b.classList.remove('masked'),{once:true});}
   scrollDown();
-  if(S.autoplay||S.mode==='listening'||speakNext){speak(reply);}
+  if(S.autoplay||S.mode==='listening'||S.mode==='speaking'||speakNext){speak(reply);}
   speakNext=false;
   saveConvo();
 }
@@ -571,7 +573,7 @@ function pickMode(id){
 function startMode(id,note){
   S.mode=id;if(id!=='realestate')S.reMode='';reExam=null;clearReBar();save();renderModes();
   history=[];chat.innerHTML='';
-  const labels={free:'自由聊天',scenario:'场景训练',grammar:'语法专项',conjugation:'动词变位',vocab:'词汇专项',listening:'听力听写',reading:'阅读',writing:'写作批改',translation:'中意翻译',idioms:'习语谚语',review:'每日复习',realestate:'房产中介考试'};
+  const labels={free:'自由聊天',scenario:'场景训练',grammar:'语法专项',conjugation:'动词变位',vocab:'词汇专项',listening:'听力听写',reading:'阅读',writing:'写作批改',translation:'中意翻译',idioms:'习语谚语',speaking:'口语练习',review:'每日复习',realestate:'房产中介考试'};
   if(restoreConvo()){banner(`已切换到 <b style="cursor:default">${labels[id]}</b>${note?' · '+note:''} · 已恢复上次对话(🗑 可清空)`);return;}
   banner(`已切换到 <b style="cursor:default">${labels[id]}</b>${note?' · '+note:''}。导师正在开场…`);
   kickoff();
