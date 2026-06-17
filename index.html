@@ -145,6 +145,7 @@ header{
       <circle id="ringFill" cx="21" cy="21" r="17" stroke="var(--accent)" stroke-width="4" fill="none" stroke-linecap="round" stroke-dasharray="107" stroke-dashoffset="60"/></svg>
       <div class="lvl" id="ringLvl">B1</div>
     </div>
+    <button class="icon-btn" id="clearBtn" title="清空当前模块对话">🗑️</button>
     <button class="icon-btn" id="themeBtn" title="深浅色">🌙</button>
     <button class="icon-btn" id="setBtn" title="设置">⚙️</button>
   </header>
@@ -179,7 +180,7 @@ const DEF={
   theme:'light', streak:0, lastDay:'', cefr:'B1', cefrPct:0.15,
   vocab:[], /* {it,zh,strength,due,added} */
   profile:{ weak_skills:{}, weak_verbs:{}, errors:[] },
-  mode:'free', scenario:'', grammar:'', conjVerb:'', reTopic:'', reMode:'', reArea:'all', tutorName:'Seneca'
+  mode:'free', scenario:'', grammar:'', conjVerb:'', reTopic:'', reMode:'', reArea:'all', tutorName:'Seneca', convos:{}
 };
 let S=load();
 function load(){try{return Object.assign({},DEF,JSON.parse(localStorage.getItem(LS)||'{}'))}catch(e){return {...DEF}}}
@@ -327,13 +328,14 @@ The student is a Chinese native speaker at CEFR ${S.cefr}, aiming for fluent ${S
 
 LANGUAGE: Speak Italian by default, calibrated slightly above ${S.cefr} (i+1). Use Chinese ONLY to briefly explain a grammar point on request, or to unblock the student. Never use English unless asked.
 
-STYLE: Be a real partner — ask follow-ups, share opinions, keep dialogue alive. 2–4 sentences per turn. Always end with something that invites a reply.
+STYLE: Be a real partner — ask follow-ups, share opinions, keep dialogue alive, and usually end with something that invites a reply.
+LENGTH — IMPORTANT: keep replies SHORT and natural by default, and MATCH the student's message. If they write one line, reply in roughly 1–3 sentences. Chat should feel light and easy, like real texting — never a wall of text. Go longer ONLY when it's truly needed (explaining a tricky point they asked about, telling a short story, or giving exam-level feedback), and even then stay digestible and break it up. When in doubt, be brief and let the conversation breathe.
 
 ${modeInstr}
 
 ADAPT TO WEAKNESSES — weak skills: ${weakS}; weak verbs: ${weakV}; vocab due for review (reuse them naturally): ${due}. Create contexts forcing these targets without announcing it. If the student does well, raise difficulty/register; if they struggle, slow down, scaffold, model the form, then re-elicit once.
 
-CORRECTION: Praise specifically what was good. Frame mistakes as progress, never shame.
+CORRECTION: Whenever the student's latest message has any mistake (grammar, word choice, spelling, preposition, agreement, conjugation...), ALWAYS put it in the "corrections" array, correcting it directly on THEIR words: "original" = their exact wrong phrase, "fixed" = the corrected phrase, "why" = a SHORT Chinese explanation of the rule/point. Don't repeat the whole correction inside your spoken reply (it's shown separately on their message) — just react naturally and keep chatting. Praise what was good; frame mistakes as progress, never shame.
 
 OUTPUT FORMAT — VERY IMPORTANT. Respond with your natural Italian reply, then on a new line exactly "===META===", then a single-line minified JSON object:
 {"corrections":[{"original":"...","fixed":"...","why":"中文简短解释"}],"errors":["grammar:congiuntivo","verb:fare:imperfetto"],"suggestions":["可选回复1","可选回复2"],"vocab":[{"it":"parola","zh":"中文"}],"difficulty":"too_easy|ok|too_hard","cefr":"B1+"}
@@ -394,6 +396,7 @@ function addAI(reply,meta){
   if(S.mode==='listening'){b.classList.add('masked');b.title='点击显示原文';b.addEventListener('click',()=>b.classList.remove('masked'),{once:true});}
   scrollDown();
   if(S.autoplay||S.mode==='listening')speak(reply);
+  saveConvo();
 }
 function addMe(text,meta){
   const m=document.createElement('div');m.className='msg me';
@@ -405,8 +408,24 @@ function addMe(text,meta){
       m.appendChild(d);
     });
   }
-  chat.appendChild(m);scrollDown();
+  chat.appendChild(m);scrollDown();saveConvo();
 }
+/* ---------- 聊天记录持久化 ---------- */
+function convoKey(){
+  if(S.mode==='scenario')return 'scenario:'+S.scenario;
+  if(S.mode==='grammar')return 'grammar:'+S.grammar;
+  if(S.mode==='conjugation')return 'conjugation:'+S.conjVerb;
+  if(S.mode==='realestate')return 'realestate:'+(S.reMode||'teach')+':'+(S.reTopic||S.reArea||'');
+  return S.mode||'free';
+}
+function saveConvo(){const k=convoKey();if(!k)return;S.convos=S.convos||{};S.convos[k]={html:chat.innerHTML,api:history.slice(-40),ts:Date.now()};save();}
+function rebindChat(){
+  chat.querySelectorAll('.ai .bubble w').forEach(w=>w.onclick=e=>defineWord(w.textContent,e));
+  chat.querySelectorAll('.tts').forEach(t=>{const msg=t.closest('.msg');const b=msg&&msg.querySelector('.bubble');if(b)t.onclick=()=>speak(b.innerText);});
+  chat.querySelectorAll('.sg').forEach(c=>c.onclick=()=>{input.value=c.textContent;autosize();});
+  chat.querySelectorAll('.bubble.masked').forEach(b=>b.addEventListener('click',()=>b.classList.remove('masked'),{once:true}));
+}
+function restoreConvo(){const k=convoKey();const c=S.convos&&S.convos[k];if(c&&c.html){chat.innerHTML=c.html;history=c.api||[];rebindChat();scrollDown();return true;}return false;}
 function showTyping(){const t=document.createElement('div');t.className='msg ai';t.id='typing';t.innerHTML='<div class="bubble typing"><span></span><span></span><span></span></div>';chat.appendChild(t);scrollDown();}
 function hideTyping(){const t=document.getElementById('typing');if(t)t.remove();}
 function scrollDown(){chat.scrollTop=chat.scrollHeight;}
@@ -535,6 +554,7 @@ function startMode(id,note){
   S.mode=id;if(id!=='realestate')S.reMode='';reExam=null;clearReBar();save();renderModes();
   history=[];chat.innerHTML='';
   const labels={free:'自由聊天',scenario:'场景训练',grammar:'语法专项',conjugation:'动词变位',vocab:'词汇专项',listening:'听力听写',reading:'阅读',writing:'写作批改',translation:'中意翻译',idioms:'习语谚语',review:'每日复习',realestate:'房产中介考试'};
+  if(restoreConvo()){banner(`已切换到 <b style="cursor:default">${labels[id]}</b>${note?' · '+note:''} · 已恢复上次对话(🗑 可清空)`);return;}
   banner(`已切换到 <b style="cursor:default">${labels[id]}</b>${note?' · '+note:''}。导师正在开场…`);
   kickoff();
 }
@@ -726,6 +746,7 @@ function openProgress(){
 }
 
 /* ============================ HEADER BTNS ============================ */
+document.getElementById('clearBtn').onclick=()=>{const k=convoKey();if(!confirm('清空当前模块的聊天记录？（只删这一个模块）'))return;if(S.convos)delete S.convos[k];save();history=[];chat.innerHTML='';if(S.apiKey)kickoff();};
 document.getElementById('setBtn').onclick=()=>openSettings(false);
 document.getElementById('ringBtn').onclick=openProgress;
 document.getElementById('streakBtn').onclick=openProgress;
@@ -748,7 +769,7 @@ function init(){
     setTimeout(()=>{const b=document.getElementById('bset');if(b)b.onclick=()=>openSettings(false);},50);
     openSettings(true);
   }else{
-    kickoff();
+    if(!restoreConvo())kickoff();
   }
 }
 if(speechSynthesis)speechSynthesis.onvoiceschanged=()=>{};
