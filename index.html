@@ -180,13 +180,14 @@ const DEF={
   theme:'light', streak:0, lastDay:'', cefr:'B1', cefrPct:0.15,
   vocab:[], /* {it,zh,strength,due,added} */
   profile:{ weak_skills:{}, weak_verbs:{}, errors:[] },
-  mode:'free', scenario:'', grammar:'', conjVerb:'', reTopic:'', reMode:'', reArea:'all', tutorName:'Seneca', convos:{}
+  mode:'free', scenario:'', grammar:'', conjVerb:'', reTopic:'', reMode:'', reArea:'all', tutorName:'Seneca', convos:{}, voiceURI:''
 };
 let S=load();
 function load(){try{return Object.assign({},DEF,JSON.parse(localStorage.getItem(LS)||'{}'))}catch(e){return {...DEF}}}
 function save(){localStorage.setItem(LS,JSON.stringify(S))}
 
 let history=[]; // {role, text} for API context (Italian convo only)
+let speakNext=false; // 语音输入后让导师语音回复
 
 /* ============================ MODES ============================ */
 const MODES=[
@@ -395,7 +396,8 @@ function addAI(reply,meta){
   b.querySelectorAll('w').forEach(w=>w.onclick=e=>defineWord(w.textContent,e));
   if(S.mode==='listening'){b.classList.add('masked');b.title='点击显示原文';b.addEventListener('click',()=>b.classList.remove('masked'),{once:true});}
   scrollDown();
-  if(S.autoplay||S.mode==='listening')speak(reply);
+  if(S.autoplay||S.mode==='listening'||speakNext){speak(reply);}
+  speakNext=false;
   saveConvo();
 }
 function addMe(text,meta){
@@ -512,14 +514,30 @@ function positionPop(ev){const r=document.querySelector('.app').getBoundingClien
 document.addEventListener('click',e=>{if(!pop.contains(e.target)&&e.target.tagName!=='W')pop.classList.remove('show');});
 
 /* ============================ TTS / STT ============================ */
-function speak(t){if(!('speechSynthesis'in window))return;speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);u.lang='it-IT';u.rate=0.95;const v=speechSynthesis.getVoices().find(x=>x.lang.startsWith('it'));if(v)u.voice=v;speechSynthesis.speak(u);}
+function pickVoice(){
+  const vs=speechSynthesis.getVoices()||[];
+  if(S.voiceURI){const v=vs.find(x=>x.voiceURI===S.voiceURI);if(v)return v;}
+  const it=vs.filter(v=>/^it/i.test(v.lang));
+  const male=it.find(v=>/(luca|paolo|diego|cosimo|giorgio|carlo|marco|maschile|\bmale\b|uomo)/i.test(v.name));
+  const notFemale=it.find(v=>!/(alice|elsa|federica|donna|female|woman)/i.test(v.name));
+  return male||notFemale||it[0]||null;
+}
+function speak(t){if(!('speechSynthesis'in window))return;speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);u.lang='it-IT';u.rate=0.96;u.pitch=0.85;const v=pickVoice();if(v)u.voice=v;speechSynthesis.speak(u);}
+function populateVoices(){
+  const sel=document.getElementById('vc');if(!sel)return;
+  const vs=speechSynthesis.getVoices()||[];
+  const it=vs.filter(v=>/^it/i.test(v.lang)), others=vs.filter(v=>!/^it/i.test(v.lang));
+  const cur=S.voiceURI||(pickVoice()&&pickVoice().voiceURI)||'';
+  const opt=v=>{const male=/(luca|paolo|diego|cosimo|giorgio|carlo|marco|maschile|\bmale\b|uomo)/i.test(v.name);return `<option value="${v.voiceURI}"${v.voiceURI===cur?' selected':''}>${male?'♂ ':''}${v.name} (${v.lang})</option>`;};
+  sel.innerHTML=(it.length?'<optgroup label="意大利语">'+it.map(opt).join('')+'</optgroup>':'')+(others.length?'<optgroup label="其它语言(不推荐)">'+others.map(opt).join('')+'</optgroup>':'')||'<option value="">(系统暂无可用声音)</option>';
+}
 const micBtn=document.getElementById('micBtn');let recog;
 if('webkitSpeechRecognition'in window||'SpeechRecognition'in window){
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;recog=new SR();recog.lang='it-IT';recog.interimResults=false;
-  recog.onresult=e=>{input.value=e.results[0][0].transcript;autosize();};
+  recog.onresult=e=>{input.value=e.results[0][0].transcript;autosize();speakNext=true;doSend();};
   recog.onend=()=>micBtn.classList.remove('rec');
   micBtn.onclick=()=>{if(micBtn.classList.contains('rec')){recog.stop();}else{micBtn.classList.add('rec');try{recog.start()}catch(e){}}};
-}else{micBtn.onclick=()=>alert('当前浏览器不支持语音输入，建议用 Chrome。');}
+}else{micBtn.onclick=()=>alert('此浏览器的网页语音输入不可用（iPhone Safari 不支持）。\n\n请改用手机键盘自带的听写：调出键盘后点空格旁的 🎤 对着说话即可输入，然后发送。\n（电脑/安卓 Chrome 可用本按钮直接语音输入。）');}
 
 /* ============================ HINT ============================ */
 document.getElementById('hintBtn').onclick=async()=>{
@@ -720,10 +738,13 @@ function openSettings(force){
   <div class="field"><label>目标等级</label><select id="tg">
     ${['B2','B2+','C1'].map(l=>`<option${S.target===l?' selected':''}>${l}</option>`).join('')}
   </select></div>
-  <div class="field"><label><input type="checkbox" id="ap" ${S.autoplay?'checked':''} style="width:auto;margin-right:6px">自动朗读导师消息</label></div>
+  <div class="field"><label>导师声音</label><select id="vc"></select><div class="help">优先男声、音调偏低更有磁性。iPhone 默认意语只有女声 Alice；要男声请到「设置→辅助功能→朗读内容→声音→意大利语」下载一个男声(如 Luca)，再回来这里选。</div><button class="btn ghost" id="tryVoice" style="margin-top:8px">🔊 试听</button></div>
+  <div class="field"><label><input type="checkbox" id="ap" ${S.autoplay?'checked':''} style="width:auto;margin-right:6px">自动朗读导师消息（语音模式）</label></div>
   <button class="btn" id="saveSet">保存</button>
   ${force?'':'<button class="btn ghost" id="closeSet" style="margin-top:8px">关闭</button>'}`);
-  document.getElementById('saveSet').onclick=()=>{S.apiKey=document.getElementById('ak').value.trim();S.model=document.getElementById('mdl').value;S.target=document.getElementById('tg').value;S.tutorName=document.getElementById('tn').value.trim()||'Seneca';S.autoplay=document.getElementById('ap').checked;save();closeSheet();if(!chat.children.length)kickoff();};
+  populateVoices();
+  document.getElementById('tryVoice').onclick=()=>{const sel=document.getElementById('vc').value;const vs=speechSynthesis.getVoices();const v=vs.find(x=>x.voiceURI===sel);speechSynthesis.cancel();const u=new SpeechSynthesisUtterance('Ciao! Sono '+(document.getElementById('tn').value.trim()||'Seneca')+', piacere di conoscerti.');u.lang='it-IT';u.rate=0.96;u.pitch=0.85;if(v)u.voice=v;speechSynthesis.speak(u);};
+  document.getElementById('saveSet').onclick=()=>{S.apiKey=document.getElementById('ak').value.trim();S.model=document.getElementById('mdl').value;S.target=document.getElementById('tg').value;S.tutorName=document.getElementById('tn').value.trim()||'Seneca';S.voiceURI=document.getElementById('vc').value;S.autoplay=document.getElementById('ap').checked;save();closeSheet();if(!chat.children.length)kickoff();};
   const cs=document.getElementById('closeSet');if(cs)cs.onclick=closeSheet;
 }
 function openVocab(){
