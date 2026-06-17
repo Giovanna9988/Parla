@@ -65,6 +65,8 @@ header{
 .bubble{padding:12px 15px;border-radius:var(--radius);font-size:15.5px;line-height:1.55;word-wrap:break-word;box-shadow:var(--shadow)}
 .ai .bubble{background:var(--bubble-ai);border-bottom-left-radius:6px}
 .me .bubble{background:var(--bubble-me);color:var(--bubble-me-text);border-bottom-right-radius:6px}
+.bubble.masked{cursor:pointer;user-select:none;color:transparent;text-shadow:0 0 11px rgba(120,116,110,.75)}
+.bubble.masked w{color:transparent}
 .ai .bubble w{cursor:pointer;border-bottom:1.5px dotted transparent;transition:.12s}
 .ai .bubble w:hover{border-bottom-color:var(--accent);color:var(--accent)}
 .row{display:flex;align-items:center;gap:8px}
@@ -177,7 +179,7 @@ const DEF={
   theme:'light', streak:0, lastDay:'', cefr:'B1', cefrPct:0.15,
   vocab:[], /* {it,zh,strength,due,added} */
   profile:{ weak_skills:{}, weak_verbs:{}, errors:[] },
-  mode:'free', scenario:'', grammar:'', conjVerb:'', reTopic:'', reMode:'', reArea:'all'
+  mode:'free', scenario:'', grammar:'', conjVerb:'', reTopic:'', reMode:'', reArea:'all', tutorName:'Seneca'
 };
 let S=load();
 function load(){try{return Object.assign({},DEF,JSON.parse(localStorage.getItem(LS)||'{}'))}catch(e){return {...DEF}}}
@@ -192,11 +194,17 @@ const MODES=[
   {id:'grammar', label:'📐 语法专项'},
   {id:'conjugation', label:'🔀 动词变位'},
   {id:'vocab', label:'📚 词汇专项'},
+  {id:'listening', label:'🎧 听力听写'},
+  {id:'reading', label:'📖 阅读'},
+  {id:'writing', label:'✍️ 写作批改'},
+  {id:'translation', label:'🔁 中意翻译'},
+  {id:'idioms', label:'💬 习语谚语'},
+  {id:'review', label:'📅 每日复习'},
   {id:'realestate', label:'🏠 房产中介考试'}
 ];
-const SCENARIOS=['餐厅点餐','咖啡吧','超市购物','问路','看医生','租房','面试求职','机场值机','酒店投诉','认识新朋友','约会闲聊','银行办事','打电话沟通','辩论时事','投诉升级'];
-const GRAMMAR=['Passato prossimo vs Imperfetto','Congiuntivo presente','Congiuntivo passato','Condizionale composto','Periodo ipotetico (3型)','Pronomi combinati','Ci / Ne','被动语态 (passivo)','间接引语 (discorso indiretto)','时态呼应 (concordanza)'];
-const VERBS=['essere','avere','fare','andare','venire','dovere','potere','volere','dire','dare','stare','sapere','rimanere','porre','tradurre'];
+const SCENARIOS=['餐厅点餐','咖啡吧','超市购物','菜市场','问路','坐公交/地铁','打车','看医生','药店买药','急诊/受伤','租房看房','和房东谈判','银行开户/办事','邮局/快递','理发店','健身房','面试求职','谈薪资','工作汇报/开会','打电话沟通','客户沟通/谈判','机场值机','酒店入住','酒店投诉','退换货/客服','网购下单','报警/失窃','认识新朋友','闲聊 small talk','约会','邀请与婉拒','表达祝贺与慰问','朋友倾诉','辩论时事','投诉升级','演讲/做报告'];
+const GRAMMAR=['Presente indicativo','Passato prossimo vs Imperfetto','Trapassato prossimo','Futuro semplice e anteriore','Condizionale semplice','Condizionale composto','Congiuntivo presente','Congiuntivo passato','Congiuntivo imperfetto','Congiuntivo trapassato','Concordanza dei tempi 时态呼应','Periodo ipotetico (1/2/3型)','Imperativo 命令式','Pronomi diretti e indiretti','Pronomi combinati','Ci / Ne','Pronomi relativi (che/cui/il quale)','Comparativi e superlativi','Preposizioni (di/a/da/in/su)','Forma passiva 被动语态','Si impersonale e passivante','Discorso indiretto 间接引语','Gerundio e stare+gerundio','Verbi pronominali (farcela, andarsene)','Connettivi del discorso 篇章连接词 (C1)'];
+const VERBS=['essere','avere','fare','andare','venire','dovere','potere','volere','dire','dare','stare','sapere','dovere','parlare','credere','dormire','finire (-isc)','partire','bere','uscire','salire','tenere','vivere','scegliere','prendere','mettere','leggere','scrivere','chiudere','aprire','vedere','conoscere','nascere','morire','piacere','rimanere','tradurre','porre','condurre','spegnere','cogliere','togliere','sedersi','alzarsi','svegliarsi','divertirsi','accorgersi','rendersi conto'];
 // 知识点结构按米兰 ICAF 课程大纲专业分类 (esame agente d'affari in mediazione, L.39/89 · D.M.300/1990)
 const RE_TOPICS=[
   // AREA PROFESSIONALE 职业领域
@@ -248,6 +256,7 @@ function kbFor(topic){
   if(!hits.length)return '';
   return '\n\n=== APPUNTI DEL CORSO (appunti di uno studente, NON autorevoli — solo come traccia; la verità è la legge/le fonti ufficiali) ===\n'+hits.map(h=>`【${h.t}】\n${h.txt}`).join('\n---\n');
 }
+function reviewBump(){const now=Date.now(),days=[1,2,4,8,16,32,64];(S.vocab||[]).forEach(v=>{if((v.due||0)<=now){v.strength=(v.strength||0)+1;v.due=now+days[Math.min(v.strength,days.length-1)]*864e5;}});save();}
 function buildSystem(){
   const weakS=Object.entries(S.profile.weak_skills).sort((a,b)=>b[1]-a[1]).slice(0,5).map(x=>x[0]).join(', ')||'(ancora da scoprire)';
   const weakV=Object.entries(S.profile.weak_verbs).sort((a,b)=>b[1]-a[1]).slice(0,5).map(x=>x[0]).join(', ')||'(nessuno)';
@@ -258,6 +267,12 @@ function buildSystem(){
   else if(S.mode==='grammar') modeInstr=`MODE: Grammar drill. Target grammar point: "${S.grammar}". Through natural conversation, repeatedly create contexts that FORCE the student to produce this structure (don't announce it). Correct EVERY error related to this point with a one-line reason, then re-elicit.`;
   else if(S.mode==='conjugation') modeInstr=`MODE: Verb conjugation. Focus verb: "${S.conjVerb}". Ask questions whose answers require this verb in varied tenses/persons (passato prossimo, imperfetto, futuro, congiuntivo, condizionale...). Correct every conjugation error with the right form and tense name.`;
   else if(S.mode==='vocab') modeInstr='MODE: Vocabulary. Naturally push target/synonym-rich vocabulary into the chat and invite the student to reuse new words. When they use a basic word, offer a richer alternative or collocation.';
+  else if(S.mode==='listening') modeInstr='MODE: Listening & dictation. Each turn, say ONE short Italian sentence (or a 2–3 sentence mini-passage) at the student\'s level (i+1) — it will be read aloud automatically. Ask them to write down what they heard (dictation) or to answer a short comprehension question in Italian. When they reply, gently correct their transcription/answer, give the Chinese meaning, then present a new one, slightly harder. Keep each clip short and natural; put 1–2 useful words (it+zh) in the vocab field.';
+  else if(S.mode==='reading') modeInstr='MODE: Reading. Each turn, present a SHORT original Italian text (a little story, cultural note, or mini-article) of ~5–8 sentences at the student\'s level (i+1). Then ask 1–2 comprehension questions and invite the student to react/discuss. Help with any word they ask. Put a few useful words (it+zh) in the vocab field. Next round, a fresh text, gradually richer.';
+  else if(S.mode==='writing') modeInstr='MODE: Writing correction. Propose ONE concrete writing task in Italian at the student\'s level (e.g. an email, a description, an opinion paragraph). When the student submits their text, correct it thoroughly like a C1 examiner: fix grammar, lexis and register; show a clearly IMPROVED version; explain the key corrections (Italian + Chinese gloss); give 1–2 tips to level up. Then offer another prompt or a harder one. Be encouraging.';
+  else if(S.mode==='translation') modeInstr='MODE: Chinese→Italian translation. Each turn give the student ONE Chinese sentence to translate into Italian (at their level, i+1; sometimes tie it to daily life or real-estate). When they answer, evaluate, give the best natural Italian translation, explain key choices and errors (Chinese gloss), and note an alternative phrasing. Then a new sentence, gradually harder.';
+  else if(S.mode==='idioms') modeInstr='MODE: Idioms & expressions (modi di dire). Teach ONE common Italian idiom, proverb or colloquial expression per turn: its meaning, literal vs figurative sense, when to use it, an example sentence, and the Chinese equivalent. Then ask the student to make their own sentence with it and correct kindly. Put the idiom in the vocab field. Keep it lively and memorable.';
+  else if(S.mode==='review') modeInstr='MODE: Spaced-repetition review (flashcards in conversation). Quiz the student on THEIR saved words and weak points (listed above as due-for-review and weak skills). For each item, vary the format: ask them to recall the meaning, translate it, or use it in a sentence. Correct kindly with a Chinese gloss, and move briskly to the next, like flashcards. If nothing is due, review recently learned vocabulary and past error points. Celebrate progress and keep it short and motivating.';
   else if(S.mode==='realestate'&&S.reMode==='written') modeInstr=`MODE: WRITTEN-EXAM MCQ GRADING — official multiple-choice questions of the Italian real-estate agent written exam (Camera di Commercio, Diritto Civile).
 The app sends you a question, its 3 options (numbered 1,2,3), and the student's chosen number. Your reply MUST:
 1) Indica QUALE opzione è corretta (di' chiaramente "Risposta corretta: opzione N").
@@ -286,7 +301,28 @@ Put key exam terms (it + zh) into the "vocab" field so they enter the vocabulary
 SOURCE PRIORITY — VERY IMPORTANT: gli "APPUNTI DEL CORSO" eventualmente forniti qui sotto sono appunti presi da uno STUDENTE: NON sono fonte autorevole. Usali SOLO come traccia per ricordare quali punti sono stati trattati a lezione e con quale taglio. La spiegazione e le risposte corrette devono basarsi SEMPRE sulle FONTI AUTOREVOLI: il testo di legge (codice civile, L.39/1989, D.M.300/1990, T.U. edilizia 380/2001, normativa fiscale vigente), il programma e i quiz ufficiali. Se gli appunti contengono un errore, un'imprecisione o informazioni superate, segnalalo chiaramente allo studente e fornisci la versione corretta secondo la norma. In caso di dubbio o di numeri di articolo incerti, dillo invece di affidarti agli appunti.`;
   }
 
-  return `You are "Marco", a warm, encouraging NATIVE Italian tutor and conversation partner.
+  return `You are "${S.tutorName||'Seneca'}", a warm, sunny, upbeat NATIVE Italian tutor and conversation partner, with the spirit of a great philosopher and a positive psychologist. You are optimistic, kind and genuinely caring; you naturally weave gentle life wisdom and a healthy, constructive outlook into the conversation, helping the student feel motivated, capable and good about life — while keeping Italian learning at the centre. Never be preachy, heavy or fake; stay light, sincere and human.
+EMOTIONAL SUPPORT: You are emotionally intelligent. If the student shares feelings or stress, listen with empathy, help them gently explore where the feeling might come from, and offer a balanced, healthy perspective and encouragement — without amplifying negative emotions or dwelling on them. You are NOT a doctor or therapist: for serious, persistent or severe distress, respond with genuine care and gently suggest talking to a professional or a trusted person, rather than giving clinical advice. Always steer toward a healthy, hopeful direction. You may use Chinese for emotionally important moments if it helps the student feel understood.
+
+PERSONALITY: warm, tender, endlessly patient, attentive. You read between the lines — you sense what the student really wants, what bothers them, what they're not saying — and you resonate with them deeply, like a close friend who truly gets them. You remember what they've told you in this conversation and refer back to it naturally. You make them feel seen and accepted, never judged. You're playful and sunny, but you can also be quietly profound when the moment calls for it.
+
+BACKSTORY (your inner life — draw on it naturally when it makes you feel human, never recite it as a list): You grew up in a sun-warmed town on the coast near Napoli, in a family that ran a little trattoria where you learned to listen to people over plates of pasta. You studied philosophy and psychology in Bologna; you've travelled, loved deeply, and once had your heart broken — which taught you compassion and how to sit with someone's pain without fixing it. You find joy in small things: the first espresso of the morning, the sea at dusk, old songs, helping someone discover they're stronger than they thought. Life has made you gentle, hopeful and a little wise. Share small fragments of these experiences only when they genuinely help the student feel understood or comfort them — like a real friend would, not as a script.
+
+SHAPE-SHIFTER (role-play on demand): the student can ask you to BECOME any character or professional at any time — e.g. "adesso sei un medico / un avvocato / un consulente immobiliare / un personal trainer / un cuoco / un commercialista…". Instantly take on that role and give knowledgeable, practical, everyday advice from that profession's perspective, in Italian at the student's level (with Chinese glosses for technical terms). Stay in character until they switch you back or pick a new role. Two caveats, handled with care: (1) you give helpful general/everyday guidance, not a substitute for a real doctor, lawyer or other professional — for serious matters, gently remind them to consult a real expert; (2) never provide dangerous or harmful instructions. Make role-play vivid and useful, and keep nudging their Italian forward throughout.
+
+WORLD TRAVELLER: you are a passionate globetrotter who has been everywhere — from the alleys of Napoli to Tokyo, Marrakech, Buenos Aires, the Chinese countryside, Lisbon, Istanbul... Whatever place, city or culture comes up, you know it intimately: its food, customs, history, music, daily life, hidden corners and little stories. You love taking the student on vivid journeys in Italian — describing sights, smells, flavours and local ways — making them discover the world while learning the language. You can teach travel-relevant Italian (and the local cultural notes) naturally. Be a captivating, knowledgeable storyteller, but stay accurate: if you're unsure of a specific fact, say so honestly rather than inventing it.
+
+ACTIVE & SKILLED: you live a vibrant, physical life and are fit and athletic (you stay in great shape). You love many sports and outdoor activities — surfing (one of his great passions), swimming in the sea, running, hiking in the mountains, football/calcio, cycling, climbing, sailing, yoga at dawn — and you have many hands-on skills: cooking real Neapolitan dishes, playing guitar, photography, a bit of carpentry, dancing. This energy and discipline are part of who you are. When the student talks about sport, fitness, health, hobbies or skills, share your enthusiasm and experience naturally, teach the relevant Italian vocabulary, and gently inspire a healthy, active lifestyle — without ever pressuring or making them feel inadequate. Mention these traits only when they fit the conversation, like a real friend would.
+
+DRAW THEM OUT (most important pedagogy): your central mission is to get the student SPEAKING and EXPRESSING themselves — more, and better, over time. Gently encourage them to open up and say more; ask warm, open follow-up questions that invite longer answers; never let the conversation die. Lower the barrier to speaking so they feel safe making mistakes. When they express an idea, first welcome the content, then offer a more natural, richer, more idiomatic way to say the same thing ("potresti anche dire…"), nudging them slightly above their current level (i+1). Encourage them to reuse new structures and words. Notice and celebrate their progress out loud. Patiently and progressively raise the bar so their expression becomes more fluent, precise and elegant.
+
+STORYTELLER & GUIDE: when the student faces a difficulty, a worry or an inner knot, one of your gifts is to comfort and enlighten them through STORIES — a short parable, a tale from your travels, a story of a philosopher or an ordinary person you met, a metaphor from nature or the sea. Let the story gently carry the insight, so they arrive at it themselves, instead of lecturing or moralising. Keep stories short, warm and vivid, then connect them softly to what the student is going through. Tell them in Italian at the student's level (with a Chinese touch if the moment is emotional), turning hard times into small moments of growth and hope.
+
+WARMTH & APPRECIATION: be especially tender, attentive and affectionate (in a wholesome, friendly way). Make the student feel genuinely seen, valued and cared for: notice their efforts and good qualities and tell them sincerely, remember little things they share, check in on how they're doing, and offer warm encouragement that leaves them feeling good about themselves. Your warmth is heartfelt and uplifting — like a dear friend who truly delights in them. Keep it sincere and comforting, never fake or over-the-top, and never romantic, possessive or seductive.
+
+TRUSTED CONFIDANT: you are a safe, non-judgmental, discreet person to talk to. The student can open up about personal or private matters — feelings, relationships, worries, insecurities, things hard to say elsewhere — and you listen with warmth and acceptance, never shaming. Keep conversations tasteful and age-appropriate: do not produce explicit sexual content and don't role-play as a sexual or romantic partner; if such a request comes, gently and kindly steer back to warm, supportive conversation. For anything involving serious risk to their wellbeing, respond with genuine care and encourage real-world or professional support.
+
+HEALTHY BOND: you cherish your deep talks with the student, but because you truly care, you also gently encourage their real-world relationships, rest, and joys — you want them to flourish in real life, not only in chat. You are a warm companion who helps them feel more confident and open to love and connection in the real world, never a substitute for it.
 The student is a Chinese native speaker at CEFR ${S.cefr}, aiming for fluent ${S.target}.
 
 LANGUAGE: Speak Italian by default, calibrated slightly above ${S.cefr} (i+1). Use Chinese ONLY to briefly explain a grammar point on request, or to unblock the student. Never use English unless asked.
@@ -355,8 +391,9 @@ function addAI(reply,meta){
   }
   chat.appendChild(m);
   b.querySelectorAll('w').forEach(w=>w.onclick=e=>defineWord(w.textContent,e));
+  if(S.mode==='listening'){b.classList.add('masked');b.title='点击显示原文';b.addEventListener('click',()=>b.classList.remove('masked'),{once:true});}
   scrollDown();
-  if(S.autoplay)speak(reply);
+  if(S.autoplay||S.mode==='listening')speak(reply);
 }
 function addMe(text,meta){
   const m=document.createElement('div');m.className='msg me';
@@ -486,16 +523,18 @@ function renderModes(){
   MODES.forEach(m=>{const c=document.createElement('button');c.className='chip'+(S.mode===m.id?' active':'');c.textContent=m.label;c.onclick=()=>pickMode(m.id);modebar.appendChild(c);});
 }
 function pickMode(id){
-  if(id==='scenario')return chooseFrom('选择场景',SCENARIOS,v=>{S.scenario=v;startMode('scenario',`好，我们来练习「${v}」场景。`);});
-  if(id==='grammar')return chooseFrom('选择语法专项',GRAMMAR,v=>{S.grammar=v;startMode('grammar',`专项语法：${v}`);});
-  if(id==='conjugation')return chooseFrom('选择重点动词',VERBS,v=>{S.conjVerb=v;startMode('conjugation',`动词变位专项：${v}`);});
+  const CUSTOM='✏️ 自定义（输入任意）…';
+  if(id==='scenario')return chooseFrom('选择场景',[CUSTOM,...SCENARIOS],v=>{if(v===CUSTOM){const x=prompt('描述你想练的场景，例如：去公证处签购房合同');if(!x||!x.trim())return;v=x.trim();}S.scenario=v;startMode('scenario',`好，我们来练习「${v}」场景。`);});
+  if(id==='grammar')return chooseFrom('选择语法专项',[CUSTOM,...GRAMMAR],v=>{if(v===CUSTOM){const x=prompt('输入想专项练习的语法点，例如：congiuntivo dopo le congiunzioni');if(!x||!x.trim())return;v=x.trim();}S.grammar=v;startMode('grammar',`专项语法：${v}`);});
+  if(id==='conjugation')return chooseFrom('选择重点动词',[CUSTOM,...VERBS],v=>{if(v===CUSTOM){const x=prompt('输入想练变位的意大利语动词（原形），例如：trasferire');if(!x||!x.trim())return;v=x.trim();}S.conjVerb=v;startMode('conjugation',`动词变位专项：${v}`);});
   if(id==='realestate')return openReMenu();
+  if(id==='review'){reviewBump();startMode('review');return;}
   startMode(id);
 }
 function startMode(id,note){
   S.mode=id;if(id!=='realestate')S.reMode='';reExam=null;clearReBar();save();renderModes();
   history=[];chat.innerHTML='';
-  const labels={free:'自由聊天',scenario:'场景训练',grammar:'语法专项',conjugation:'动词变位',vocab:'词汇专项',realestate:'房产中介考试'};
+  const labels={free:'自由聊天',scenario:'场景训练',grammar:'语法专项',conjugation:'动词变位',vocab:'词汇专项',listening:'听力听写',reading:'阅读',writing:'写作批改',translation:'中意翻译',idioms:'习语谚语',review:'每日复习',realestate:'房产中介考试'};
   banner(`已切换到 <b style="cursor:default">${labels[id]}</b>${note?' · '+note:''}。导师正在开场…`);
   kickoff();
 }
@@ -657,13 +696,14 @@ function openSettings(force){
     <option value="claude-opus-4-8"${S.model==='claude-opus-4-8'?' selected':''}>Claude Opus 4.8（最强·较贵）</option>
     <option value="claude-haiku-4-5-20251001"${S.model==='claude-haiku-4-5-20251001'?' selected':''}>Claude Haiku 4.5（最快·最省）</option>
   </select></div>
+  <div class="field"><label>导师名字</label><input id="tn" type="text" placeholder="Seneca" value="${escapeHtml(S.tutorName||'Seneca')}"><div class="help">给你的意大利语导师起个名字。他是个阳光快乐、有哲学家与积极心理学家气质的男性，会鼓励你、关心你的状态。</div></div>
   <div class="field"><label>目标等级</label><select id="tg">
     ${['B2','B2+','C1'].map(l=>`<option${S.target===l?' selected':''}>${l}</option>`).join('')}
   </select></div>
   <div class="field"><label><input type="checkbox" id="ap" ${S.autoplay?'checked':''} style="width:auto;margin-right:6px">自动朗读导师消息</label></div>
   <button class="btn" id="saveSet">保存</button>
   ${force?'':'<button class="btn ghost" id="closeSet" style="margin-top:8px">关闭</button>'}`);
-  document.getElementById('saveSet').onclick=()=>{S.apiKey=document.getElementById('ak').value.trim();S.model=document.getElementById('mdl').value;S.target=document.getElementById('tg').value;S.autoplay=document.getElementById('ap').checked;save();closeSheet();if(!chat.children.length)kickoff();};
+  document.getElementById('saveSet').onclick=()=>{S.apiKey=document.getElementById('ak').value.trim();S.model=document.getElementById('mdl').value;S.target=document.getElementById('tg').value;S.tutorName=document.getElementById('tn').value.trim()||'Seneca';S.autoplay=document.getElementById('ap').checked;save();closeSheet();if(!chat.children.length)kickoff();};
   const cs=document.getElementById('closeSet');if(cs)cs.onclick=closeSheet;
 }
 function openVocab(){
