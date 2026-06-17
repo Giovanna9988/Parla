@@ -180,7 +180,7 @@ const DEF={
   theme:'light', streak:0, lastDay:'', cefr:'B1', cefrPct:0.15,
   vocab:[], /* {it,zh,strength,due,added} */
   profile:{ weak_skills:{}, weak_verbs:{}, errors:[] },
-  mode:'free', scenario:'', grammar:'', conjVerb:'', reTopic:'', reMode:'', reArea:'all', tutorName:'Seneca', convos:{}, voiceURI:''
+  mode:'free', scenario:'', grammar:'', conjVerb:'', reTopic:'', reMode:'', reArea:'all', tutorName:'Seneca', convos:{}, voiceURI:'', daily:{date:'',words:[],level:'B1'}
 };
 let S=load();
 function load(){try{return Object.assign({},DEF,JSON.parse(localStorage.getItem(LS)||'{}'))}catch(e){return {...DEF}}}
@@ -196,11 +196,14 @@ const MODES=[
   {id:'grammar', label:'📐 语法专项'},
   {id:'conjugation', label:'🔀 动词变位'},
   {id:'vocab', label:'📚 词汇专项'},
+  {id:'daily', label:'📇 每日单词'},
   {id:'listening', label:'🎧 听力听写'},
   {id:'reading', label:'📖 阅读'},
   {id:'writing', label:'✍️ 写作批改'},
   {id:'translation', label:'🔁 中意翻译'},
   {id:'idioms', label:'💬 习语谚语'},
+  {id:'news', label:'📰 每日新闻读'},
+  {id:'newslisten', label:'🎧 每日新闻听'},
   {id:'speaking', label:'🗣️ 口语练习'},
   {id:'review', label:'📅 每日复习'},
   {id:'realestate', label:'🏠 房产中介考试'}
@@ -260,6 +263,34 @@ function kbFor(topic){
   return '\n\n=== APPUNTI DEL CORSO (appunti di uno studente, NON autorevoli — solo come traccia; la verità è la legge/le fonti ufficiali) ===\n'+hits.map(h=>`【${h.t}】\n${h.txt}`).join('\n---\n');
 }
 function reviewBump(){const now=Date.now(),days=[1,2,4,8,16,32,64];(S.vocab||[]).forEach(v=>{if((v.due||0)<=now){v.strength=(v.strength||0)+1;v.due=now+days[Math.min(v.strength,days.length-1)]*864e5;}});save();}
+/* ---------- 每日单词任务卡 ---------- */
+function cefrToBand(){const c=(S.cefr||'B1');if(/C1/.test(c))return 'C1';if(/B2/.test(c))return 'B2';return 'B1';}
+function dailyDone(){return (S.daily&&S.daily.words?S.daily.words.filter(x=>x.done).length:0);}
+function renderDailyBar(){const w=(S.daily&&S.daily.words)||[];reBarHtml(`📇 今日单词(${(S.daily&&S.daily.level)||cefrToBand()}) · ${dailyDone()}/${w.length} 已掌握`,'📋 清单','dailyList');setTimeout(()=>{const b=document.getElementById('dailyList');if(b)b.onclick=openDailyList;},40);}
+function openDailyList(){const w=(S.daily&&S.daily.words)||[];openSheet(`<h2>📇 今日单词</h2><div class="sub">等级 ${(S.daily&&S.daily.level)||cefrToBand()} · ${dailyDone()}/${w.length} 已在对话中用对</div>${w.length?w.map(x=>`<div class="vocab-item"><div><b>${escapeHtml(x.it)}</b> <span class="zh">${escapeHtml(x.zh)}</span></div><span>${x.done?'✅':'⬜️'}</span></div>`).join(''):'<div class="empty">今天还没有单词</div>'}<button class="btn ghost" id="newDaily" style="margin-top:14px">🔄 换一批新词</button>`);const nd=document.getElementById('newDaily');if(nd)nd.onclick=async()=>{closeSheet();S.daily={date:'',words:[],level:cefrToBand()};save();startDaily();};}
+async function generateDaily(today){
+  if(!S.apiKey){openSettings(true);return false;}
+  showTyping();
+  try{
+    const avoid=(S.vocab||[]).slice(-50).map(v=>v.it).join(', ');
+    const band=cefrToBand();
+    const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':S.apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:S.model,max_tokens:600,system:'Sei un tutor di italiano. Rispondi SOLO con JSON valido.',messages:[{role:'user',content:`Scegli 10 parole italiane utili e VARIATE di livello CEFR ${band} (lo studente cresce B1→B2→C1: scegli parole adatte a ${band}, né troppo banali né fuori livello). Evita queste già viste: ${avoid}. JSON: {"words":[{"it":"parola","zh":"中文释义"} x10]}`}]})});
+    const d=await res.json();let t=(d.content||[]).map(c=>c.text).join('').replace(/^```json|```$/g,'').trim();
+    const o=JSON.parse(t);
+    S.daily={date:today,level:band,words:(o.words||[]).slice(0,10).map(x=>({it:x.it,zh:x.zh||'',done:false}))};save();hideTyping();return true;
+  }catch(e){hideTyping();addAI('⚠️ 生成单词失败：'+e.message+'（检查网络/Key后重试）',{});return false;}
+}
+async function startDaily(){
+  S.mode='daily';S.reMode='';reExam=null;save();renderModes();clearReBar();
+  const today=new Date().toISOString().slice(0,10);
+  const fresh=S.daily&&S.daily.date===today&&S.daily.words&&S.daily.words.length;
+  if(fresh){history=[];chat.innerHTML='';if(restoreConvo()){renderDailyBar();return;}}
+  else{history=[];chat.innerHTML='';banner('正在为你准备今天的 10 个单词…');const ok=await generateDaily(today);if(!ok)return;}
+  renderDailyBar();
+  banner(`📇 今天的 10 个单词(${S.daily.level})已就绪 · 在对话里把它们用出来就算掌握！`);
+  kickoff();
+}
 function buildSystem(){
   const weakS=Object.entries(S.profile.weak_skills).sort((a,b)=>b[1]-a[1]).slice(0,5).map(x=>x[0]).join(', ')||'(ancora da scoprire)';
   const weakV=Object.entries(S.profile.weak_verbs).sort((a,b)=>b[1]-a[1]).slice(0,5).map(x=>x[0]).join(', ')||'(nessuno)';
@@ -276,6 +307,9 @@ function buildSystem(){
   else if(S.mode==='translation') modeInstr='MODE: Chinese→Italian translation. Each turn give the student ONE Chinese sentence to translate into Italian (at their level, i+1; sometimes tie it to daily life or real-estate). When they answer, evaluate, give the best natural Italian translation, explain key choices and errors (Chinese gloss), and note an alternative phrasing. Then a new sentence, gradually harder.';
   else if(S.mode==='idioms') modeInstr='MODE: Idioms & expressions (modi di dire). Teach ONE common Italian idiom, proverb or colloquial expression per turn: its meaning, literal vs figurative sense, when to use it, an example sentence, and the Chinese equivalent. Then ask the student to make their own sentence with it and correct kindly. Put the idiom in the vocab field. Keep it lively and memorable.';
   else if(S.mode==='speaking') modeInstr='MODE: Speaking practice (oral fluency). Goal: get the student TALKING ALOUD as much as possible. Give a simple, engaging spoken prompt or question and invite them to answer by VOICE (mic or phone keyboard dictation). Keep YOUR turns short and natural. After they answer: put pronunciation/fluency-relevant fixes in the corrections array; then give a natural, idiomatic MODEL way to say it (one short line) and warmly invite them to repeat it ALOUD (shadowing). Teach common spoken expressions and fillers (allora, cioè, diciamo, insomma…) and natural rhythm. Gradually push them to speak a little longer and more fluently. Be very encouraging so they feel safe speaking and making mistakes.';
+  else if(S.mode==='daily'){const w=(S.daily&&S.daily.words)||[];const list=w.map(x=>`${x.it} (${x.zh})${x.done?' ✓fatto':''}`).join('; ')||'(da generare)';modeInstr=`MODE: Daily 10-word challenge (livello ${(S.daily&&S.daily.level)||S.cefr}). Le parole di oggi: ${list}. Aiuta lo studente a IMPARARE e soprattutto a USARE attivamente ogni parola non ancora ✓fatto. Presenta brevemente una parola (significato + un esempio veloce), poi chiedi allo studente di fare una SUA frase con quella parola; correggi con gentilezza. Procedi con qualche parola per turno, turni brevi e vivaci. Nel META JSON aggiungi "used": un array con le parole-obiettivo (forma base esatta come nella lista) che lo studente ha usato CORRETTAMENTE nel suo ultimo messaggio (solo se usate bene da lui).`;}
+  else if(S.mode==='news') modeInstr=`MODE: Daily short news reading. Present ONE short Italian news-style article (notizia breve, ~6–10 frasi) al livello ${S.cefr} su un tema vario e plausibile (Italia, mondo, cultura, scienza, sport...). IMPORTANTE: non puoi navigare il web, quindi scrivi un pezzo realistico per esercizio — NON dichiarare che è una notizia di oggi verificata e NON inventare date precise, numeri o citazioni attribuite a persone reali. Dopo l'articolo, fai 1–2 domande di comprensione, invita a una breve reazione e metti qualche parola chiave (it+zh) nel campo vocab. Sii coinvolgente.`;
+  else if(S.mode==='newslisten') modeInstr=`MODE: Daily news LISTENING (notiziario breve). Leggi un breve notiziario parlato in italiano (2–4 brevi notizie, un paio di minuti d'ascolto) al livello ${S.cefr}; verrà riprodotto ad alta voce automaticamente. Stessa regola di onestà: materiale realistico per esercizio, non titoli verificati, niente fatti specifici inventati su persone reali. Dopo, fai 1–2 domande di comprensione in italiano e offri di ripetere. Metti qualche parola chiave (it+zh) nel vocab.`;
   else if(S.mode==='review') modeInstr='MODE: Spaced-repetition review (flashcards in conversation). Quiz the student on THEIR saved words and weak points (listed above as due-for-review and weak skills). For each item, vary the format: ask them to recall the meaning, translate it, or use it in a sentence. Correct kindly with a Chinese gloss, and move briskly to the next, like flashcards. If nothing is due, review recently learned vocabulary and past error points. Celebrate progress and keep it short and motivating.';
   else if(S.mode==='realestate'&&S.reMode==='written') modeInstr=`MODE: WRITTEN-EXAM MCQ GRADING — official multiple-choice questions of the Italian real-estate agent written exam (Camera di Commercio, Diritto Civile).
 The app sends you a question, its 3 options (numbered 1,2,3), and the student's chosen number. Your reply MUST:
@@ -398,7 +432,7 @@ function addAI(reply,meta){
   b.querySelectorAll('w').forEach(w=>w.onclick=e=>defineWord(w.textContent,e));
   if(S.mode==='listening'){b.classList.add('masked');b.title='点击显示原文';b.addEventListener('click',()=>b.classList.remove('masked'),{once:true});}
   scrollDown();
-  if(S.autoplay||S.mode==='listening'||S.mode==='speaking'||speakNext){speak(reply);}
+  if(S.autoplay||S.mode==='listening'||S.mode==='speaking'||S.mode==='newslisten'||speakNext){speak(reply);}
   speakNext=false;
   saveConvo();
 }
@@ -473,6 +507,12 @@ function updateProfile(meta){
   });
   // vocab from AI
   (meta.vocab||[]).forEach(v=>{if(v.it&&!S.vocab.find(x=>x.it.toLowerCase()===v.it.toLowerCase()))S.vocab.push({it:v.it,zh:v.zh||'',strength:0,due:Date.now(),added:Date.now()});});
+  // 每日单词：标记学员已正确用过的目标词
+  if(S.mode==='daily'&&meta.used&&S.daily&&S.daily.words){
+    meta.used.forEach(u=>{const w=S.daily.words.find(x=>x.it.toLowerCase()===String(u).toLowerCase());if(w&&!w.done){w.done=true;if(!S.vocab.find(v=>v.it.toLowerCase()===w.it.toLowerCase()))S.vocab.push({it:w.it,zh:w.zh,strength:1,due:Date.now()+2*864e5,added:Date.now()});}});
+    save();renderDailyBar();
+    if(dailyDone()>=S.daily.words.length&&S.daily.words.length)banner('🎉 今日 10 个单词全部用对，任务完成！Bravissimo!');
+  }
   // cefr drift
   if(meta.difficulty==='too_easy')S.cefrPct=Math.min(1,S.cefrPct+0.012);
   if(meta.difficulty==='too_hard')S.cefrPct=Math.max(0,S.cefrPct-0.006);
@@ -568,12 +608,13 @@ function pickMode(id){
   if(id==='conjugation')return chooseFrom('选择重点动词',[CUSTOM,...VERBS],v=>{if(v===CUSTOM){const x=prompt('输入想练变位的意大利语动词（原形），例如：trasferire');if(!x||!x.trim())return;v=x.trim();}S.conjVerb=v;startMode('conjugation',`动词变位专项：${v}`);});
   if(id==='realestate')return openReMenu();
   if(id==='review'){reviewBump();startMode('review');return;}
+  if(id==='daily')return startDaily();
   startMode(id);
 }
 function startMode(id,note){
   S.mode=id;if(id!=='realestate')S.reMode='';reExam=null;clearReBar();save();renderModes();
   history=[];chat.innerHTML='';
-  const labels={free:'自由聊天',scenario:'场景训练',grammar:'语法专项',conjugation:'动词变位',vocab:'词汇专项',listening:'听力听写',reading:'阅读',writing:'写作批改',translation:'中意翻译',idioms:'习语谚语',speaking:'口语练习',review:'每日复习',realestate:'房产中介考试'};
+  const labels={free:'自由聊天',scenario:'场景训练',grammar:'语法专项',conjugation:'动词变位',vocab:'词汇专项',listening:'听力听写',reading:'阅读',writing:'写作批改',translation:'中意翻译',idioms:'习语谚语',daily:'每日单词',news:'每日新闻阅读',newslisten:'每日新闻听力',speaking:'口语练习',review:'每日复习',realestate:'房产中介考试'};
   if(restoreConvo()){banner(`已切换到 <b style="cursor:default">${labels[id]}</b>${note?' · '+note:''} · 已恢复上次对话(🗑 可清空)`);return;}
   banner(`已切换到 <b style="cursor:default">${labels[id]}</b>${note?' · '+note:''}。导师正在开场…`);
   kickoff();
